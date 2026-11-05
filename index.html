@@ -562,6 +562,7 @@ document.querySelectorAll('[data-kind]').forEach(b => b.addEventListener('click'
   load(window.HOUSE_ROWS || [], window.HOUSE_SOURCE || '（無資料）');
   $('addBtn').disabled = false;
   $('mode').textContent = '· 唯讀模式';
+  if (location.hostname.endsWith('github.io')){ $('addBtn').hidden = true; $('file').closest('label').hidden = true; return; }
   if (location.protocol.startsWith('http')) $('helpLost').hidden = false;
 })();
 </script>
