@@ -1,0 +1,82 @@
+name: 新增收支
+run-name: "新增收支：${{ inputs.desc }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: 類型（out 支出 / in 收入 / usd 美金）
+        required: true
+        type: choice
+        options: [out, in, usd]
+      amount:
+        description: 金額（收支為萬元；美金為 USD，轉出填負數）
+        required: true
+        type: string
+      desc:
+        description: 說明
+        required: true
+        type: string
+      date:
+        description: 日期 YYYY-MM-DD（可空）
+        required: false
+        type: string
+      memo:
+        description: 備註（可空）
+        required: false
+        type: string
+      dry_run:
+        description: 只測試，不寫回 repo
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pages: write
+
+concurrency:
+  group: add-entry
+  cancel-in-progress: false
+
+jobs:
+  add:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 寫入 HOUSE.xlsx
+        env:
+          KIND: ${{ inputs.kind }}
+          AMOUNT: ${{ inputs.amount }}
+          DESC: ${{ inputs.desc }}
+          DATE: ${{ inputs.date }}
+          MEMO: ${{ inputs.memo }}
+          TZ: Asia/Taipei
+        run: python add_entry_cli.py
+
+      - name: 提交變更
+        if: ${{ !inputs.dry_run }}
+        env:
+          DESC: ${{ inputs.desc }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add HOUSE.xlsx data.js
+          git commit -m "新增收支：${DESC}"
+          git pull --rebase
+          git push
+
+      - name: 重新部署網站
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X POST "repos/${GITHUB_REPOSITORY}/pages/builds" || echo "::warning::無法觸發 Pages 重新部署"
+
+      - name: 測試結果（不提交）
+        if: ${{ inputs.dry_run }}
+        run: git diff --stat && tail -c 400 data.js

@@ -27,6 +27,27 @@ from update_data import HERE, XLSX, read_rows, write_data_js
 BACKUP_DIR = HERE / "backups"
 
 
+def clean_entry(data):
+    """檢查並整理一筆輸入，回傳 (kind, amount, desc, date, memo)；不合法時拋出 ValueError。"""
+    kind = data.get("kind")
+    if kind not in ("in", "out", "usd"):
+        raise ValueError("類型錯誤")
+    try:
+        amount = float(data.get("amount"))
+    except (TypeError, ValueError):
+        raise ValueError("金額格式錯誤")
+    if amount == 0 or amount != amount or abs(amount) > 1e9 or (kind != "usd" and amount < 0):
+        raise ValueError("金額需大於 0")
+    desc = str(data.get("desc") or "").strip()[:200]
+    if not desc:
+        raise ValueError("請填寫說明")
+    date = str(data.get("date") or "").strip() or None
+    if date:
+        datetime.datetime.strptime(date, "%Y-%m-%d")  # 格式錯誤會拋出 ValueError
+    memo = str(data.get("memo") or "").strip()[:200] or None
+    return kind, amount, desc, date, memo
+
+
 def add_entry(kind, amount, desc, date=None, memo=None):
     """在「結餘」列上方新增一筆，回傳寫入的列號。"""
     wb = openpyxl.load_workbook(XLSX)
@@ -93,18 +114,7 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(404, {"error": "not found"})
         try:
             data = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
-            kind = data.get("kind")
-            if kind not in ("in", "out", "usd"):
-                raise ValueError("類型錯誤")
-            amount = float(data.get("amount"))
-            if amount == 0 or (kind != "usd" and amount < 0):
-                raise ValueError("金額需大於 0")
-            desc = str(data.get("desc") or "").strip()
-            if not desc:
-                raise ValueError("請填寫說明")
-            date = data.get("date") or None
-            memo = str(data.get("memo") or "").strip() or None
-            row = add_entry(kind, amount, desc, date, memo)
+            row = add_entry(*clean_entry(data))
         except PermissionError:
             return self._json(409, {"error": "HOUSE.xlsx 正在被其他程式（例如 Excel）開啟，請關閉後再試。"})
         except (ValueError, TypeError) as e:
